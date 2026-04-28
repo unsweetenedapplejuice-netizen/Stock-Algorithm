@@ -1,5 +1,6 @@
 # Code created and edited using Gemini, originally based on pseudocode I designed
 
+import os
 import time
 from datetime import datetime
 from alpaca.trading.client import TradingClient
@@ -10,11 +11,17 @@ from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 
 # --- Configuration ---
-API_KEY = 'YOUR_API_KEY'
-SECRET_KEY = 'YOUR_SECRET_KEY'
+API_KEY = os.getenv('ALPACA_API_KEY')
+SECRET_KEY = os.getenv('ALPACA_SECRET_KEY')
 
 # Initialize the Data Client
-data_client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
+try:
+    data_client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
+    trading_client = TradingClient(API_KEY, SECRET_KEY, paper=True)
+except ValueError as e:
+    print(f"Authentication Error: {e}")
+    print("Double-check that API_KEY and SECRET_KEY are not empty strings.")
+    exit()
 
 def get_ipo_price(symbol):
     """Fetches the opening price of the first day the stock traded."""
@@ -40,21 +47,6 @@ def get_ipo_price(symbol):
 
 # --- Usage in your main script ---
 SYMBOL = "AAPL"
-
-# Initialize Clients
-trading_client = TradingClient(API_KEY, SECRET_KEY, paper=True)
-data_client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
-
-def get_live_prices(symbol):
-    """Fetches the last 5 minutes of bar data to create the prices_list"""
-    request_params = StockBarsRequest(
-        symbol_or_symbols=symbol,
-        timeframe=TimeFrame.Minute,
-        limit=5  # We only need the last few for current and 'yesterday' (previous)
-    )
-    bars = data_client.get_stock_bars(request_params)
-    # Convert bars to a simple list of closing prices
-    return [bar.close for bar in bars[symbol]]
 
 def run_bot():
     print(f"Starting bot for {SYMBOL}...")
