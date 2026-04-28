@@ -1,80 +1,4 @@
 # Code created and edited using Gemini, originally based on pseudocode I designed
-#from alpaca.trading.client import TradingClient
-#from alpaca.trading.requests import MarketOrderRequest, GetOrdersRequest
-#from alpaca.trading.enums import OrderSide, TimeInForce
-#from datetime import datetime
-
-## --- Configuration ---
-#API_KEY = 'YOUR_PAPER_API_KEY'
-#SECRET_KEY = 'YOUR_PAPER_SECRET_KEY'
-#PAPER = True # Set to False for live trading
-
-## The new SDK uses TradingClient
-#trading_client = TradingClient(API_KEY, SECRET_KEY, paper=PAPER)
-
-## Persistent state
-#internal_date = datetime.now().date()
-#transaction_count = 0
-
-#def execute_trade_logic(symbol, prices_list, original_price):
-#    global transaction_count, internal_date
-    
-#    # 1. Date Reset
-#    current_date = datetime.now().date()
-#    if current_date != internal_date:
-#        transaction_count = 0
-#        internal_date = current_date
-
-#    # 2. Extract Prices
-#    price = prices_list[-1]
-#    yesterdays_price = prices_list[-2]
-    
-#    buy = False
-#    sell = False
-#    transaction_occurred = False
-
-#    # 3. Strategy Logic
-#    if transaction_count < 30:
-#        if price >= (original_price + 300):
-#            if price > yesterdays_price:
-#                buy = True
-#            elif price < yesterdays_price:
-#                sell = True
-#        elif price < original_price:
-#            if price < yesterdays_price:
-#                sell = True
-#            else:
-#                buy = True
-
-#    # 4. Execution with alpaca-py
-#    try:
-#        if buy:
-#            # Create a MarketOrderRequest object
-#            market_order_data = MarketOrderRequest(
-#                symbol=symbol,
-#                qty=2,
-#                side=OrderSide.BUY,
-#                time_in_force=TimeInForce.GTC
-#            )
-#            trading_client.submit_order(order_data=market_order_data)
-#            print(f"Bought 2 shares of {symbol}")
-#            transaction_occurred = True
-            
-#        elif sell:
-#            # New SDK has a dedicated method to close an entire position
-#            try:
-#                trading_client.close_position(symbol)
-#                print(f"Sold all shares of {symbol}")
-#                transaction_occurred = True
-#            except Exception:
-#                print("No active position to sell.")
-
-#        # 5. Counter update
-#        if transaction_occurred:
-#            transaction_count += 1
-            
-#    except Exception as e:
-#        print(f"Error: {e}")
 
 import time
 from datetime import datetime
@@ -117,15 +41,6 @@ def get_ipo_price(symbol):
 # --- Usage in your main script ---
 SYMBOL = "AAPL"
 
-if __name__ == "__main__":
-    # Get the IPO price once when the bot starts
-    ORIGINAL_PRICE = get_ipo_price(SYMBOL)
-    
-    if ORIGINAL_PRICE:
-        run_bot() # Start your loop
-    else:
-        print("Failed to initialize original price. Exiting.")
-
 # Initialize Clients
 trading_client = TradingClient(API_KEY, SECRET_KEY, paper=True)
 data_client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
@@ -161,4 +76,12 @@ def run_bot():
             time.sleep(10) # Wait a bit before retrying on error
 
 if __name__ == "__main__":
-    run_bot()
+    # Get the IPO price once when the bot starts
+    ORIGINAL_PRICE = get_ipo_price(SYMBOL)
+    
+    if ORIGINAL_PRICE:
+        run_bot() # Start your loop
+    else:
+        print("Failed to initialize original price. Exiting.")
+
+        # pip install command:  C:/Users/S1855921/AppData/Local/Python/pythoncore-3.14-64/python.exe -m pip install alpaca-trade-api
