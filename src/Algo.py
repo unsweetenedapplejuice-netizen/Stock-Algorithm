@@ -9,6 +9,9 @@ from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
+from dotenv import load_dotenv # Add this import
+
+load_dotenv() # This line loads the variables from the .env file
 
 # --- Configuration ---
 API_KEY = os.getenv('ALPACA_API_KEY')
