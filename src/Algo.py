@@ -7,9 +7,9 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest
+from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
 from alpaca.data.timeframe import TimeFrame
-from dotenv import load_dotenv # Add this import
+from dotenv import load_dotenv 
 
 load_dotenv() # This line loads the variables from the .env file
 
@@ -23,7 +23,7 @@ try:
     trading_client = TradingClient(API_KEY, SECRET_KEY, paper=True)
 except ValueError as e:
     print(f"Authentication Error: {e}")
-    print("Double-check that API_KEY and SECRET_KEY are not empty strings.")
+    #print("Double-check that API_KEY and SECRET_KEY are not empty strings.")
     exit()
 
 def get_ipo_price(symbol):
@@ -34,7 +34,8 @@ def get_ipo_price(symbol):
             symbol_or_symbols=symbol,
             timeframe=TimeFrame.Day,
             start=datetime(1970, 1, 1),
-            limit=1 # We only want the very first bar
+            limit=1, # We only want the very first bar
+            feed='iex'
         )
         
         bars = data_client.get_stock_bars(request_params)
@@ -48,8 +49,29 @@ def get_ipo_price(symbol):
         print(f"Could not fetch IPO price: {e}")
         return None
 
-# --- Usage in your main script ---
-SYMBOL = "AAPL"
+def get_live_prices(symbol):
+    """Fetches the most recent price for the symbol."""
+    try:
+        request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol, feed='iex')
+        quote = data_client.get_stock_latest_quote(request_params)
+        # We'll return it as a list so your loop can handle it like a 'prices_list'
+        current_price = quote[symbol].ask_price
+        return [current_price]
+    except Exception as e:
+        print(f"Error fetching live price: {e}")
+        return [0]
+
+def execute_trade_logic(symbol, prices, original_price):
+    """Simple logic: If current price > original price, we print a message."""
+    current_price = prices[-1]
+    print(f"Analyzing {symbol}: Current ${current_price} vs Original ${original_price}")
+    
+    # Example logic:
+    # if current_price > original_price:
+    #    print("Price is up! Might be time to buy/sell.")
+
+
+
 
 def run_bot():
     print(f"Starting bot for {SYMBOL}...")
@@ -71,6 +93,7 @@ def run_bot():
             time.sleep(10) # Wait a bit before retrying on error
 
 if __name__ == "__main__":
+    SYMBOL = "AAPL"
     # Get the IPO price once when the bot starts
     ORIGINAL_PRICE = get_ipo_price(SYMBOL)
     
