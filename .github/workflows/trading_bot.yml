@@ -1,0 +1,31 @@
+name: Run Stock Trading Bot
+
+on:
+  workflow_dispatch: # This lets you click "Run" manually on GitHub for testing
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Trading Script
+      env:
+        # These map your GitHub Secrets to the exact names Algo.py expects
+        ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+        ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      run: |
+        cd src
+        python Algo.py
