@@ -70,27 +70,18 @@ def execute_trade_logic(symbol, prices, original_price):
     # if current_price > original_price:
     #    print("Price is up! Might be time to buy/sell.")
 
-
-
-
 def run_bot():
     print(f"Starting bot for {SYMBOL}...")
-    while True:
-        try:
-            # 1. Fetch data
-            prices_list = get_live_prices(SYMBOL)
+    try:
+        # 1. Fetch data
+        prices_list = get_live_prices(SYMBOL)
             
-            # 2. Run your trade logic (The function we built previously)
-            # This will check conditions and submit orders if necessary
-            execute_trade_logic(SYMBOL, prices_list, ORIGINAL_PRICE)
-            
-            # 3. Wait before the next check (e.g., 60 seconds)
-            print(f"Check complete. Current price: {prices_list[-1]}. Waiting...")
-            time.sleep(60) 
-            
-        except Exception as e:
-            print(f"Main Loop Error: {e}")
-            time.sleep(10) # Wait a bit before retrying on error
+        # 2. Run your trade logic (The function we built previously)
+        # This will check conditions and submit orders if necessary
+        execute_trade_logic(SYMBOL, prices_list, ORIGINAL_PRICE)
+               
+    except Exception as e:
+        print(f"Main Loop Error: {e}")
 
 if __name__ == "__main__":
     SYMBOL = "AAPL"
