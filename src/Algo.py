@@ -23,7 +23,6 @@ except ValueError as e:
     exit()
 
 # --- Binary Tree Requirement ---
-# Nodes store a price value alongside a label to catalog meaningful reference metrics.
 class PriceNode:
     def __init__(self, label, price):
         self.label = label
@@ -54,13 +53,11 @@ class StockPriceTree:
                 self._insert_recursive(current_node.right, label, price)
 
     def search_by_label(self, node, target_label):
-        """Traverses the tree to find a metric price by its label string."""
         if node is None:
             return None
         if node.label == target_label:
             return node.price
         
-        # Check both branches since tree is sorted by price, not alphabetical label
         left_res = self.search_by_label(node.left, target_label)
         if left_res is not None:
             return left_res
@@ -69,7 +66,6 @@ class StockPriceTree:
 
 # --- Data Fetching Functions ---
 def get_ipo_price(symbol):
-    """Fetches the baseline historical opening price (First available trading day)."""
     try:
         request_params = StockBarsRequest(
             symbol_or_symbols=symbol,
@@ -85,10 +81,9 @@ def get_ipo_price(symbol):
         return None
 
 def get_yesterday_close(symbol):
-    """Fetches yesterday's closing price directly from the market historical data."""
     try:
         end_date = datetime.now()
-        start_date = end_date - timedelta(days=5) # Lookback window to skip weekends safely
+        start_date = end_date - timedelta(days=5) 
         request_params = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=TimeFrame.Day,
@@ -97,15 +92,12 @@ def get_yesterday_close(symbol):
             feed='iex'
         )
         bars = data_client.get_stock_bars(request_params)
-        # Get the close price of the last completed daily bar
-        yesterday_price = bars[symbol][-1].close
-        return yesterday_price
+        return bars[symbol][-1].close
     except Exception as e:
         print(f"Error fetching yesterday's closing price: {e}")
         return None
 
 def get_live_price(symbol):
-    """Fetches the current live ask price."""
     try:
         request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol, feed='iex')
         quote = data_client.get_stock_latest_quote(request_params)
@@ -115,7 +107,6 @@ def get_live_price(symbol):
         return None
 
 def get_daily_transaction_count():
-    """Queries Alpaca directly to count trades executed today (Solves GitHub Action state reset)."""
     try:
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         params = GetOrdersRequest(status=QueryOrderStatus.ALL, after=today_start)
@@ -123,7 +114,7 @@ def get_daily_transaction_count():
         return len(orders)
     except Exception as e:
         print(f"Error checking daily transaction count: {e}")
-        return 999  # Safety fallback to prevent trading if API check fails
+        return 999  
 
 
 # --- Order Execution ---
@@ -143,7 +134,6 @@ def execute_market_order(symbol, qty, side_type):
 
 # --- Core Logic Pipeline ---
 def execute_trade_logic(symbol, tree):
-    # 1. Look up our needed values back out of the required Binary Search Tree
     current_price = tree.search_by_label(tree.root, "current")
     original_price = tree.search_by_label(tree.root, "original")
     yesterday_price = tree.search_by_label(tree.root, "yesterday")
@@ -160,10 +150,18 @@ def execute_trade_logic(symbol, tree):
         print("Daily transaction limit reached or exceeded. Skipping trade execution.")
         return
 
+    # --- Market Open/Closed Guard ---
+    try:
+        clock = trading_client.get_clock()
+        if not clock.is_open:
+            print(f"MARKET CLOSED: Analysis complete, but no orders placed. Next open: {clock.next_open}")
+            return
+    except Exception as e:
+        print(f"Warning: Could not check market clock via API ({e}). Proceeding anyway...")
+
     buy_trigger = False
     sell_trigger = False
 
-    # 2. Process Original Pseudocode Rule Matrix
     if current_price >= (original_price + 300):
         if current_price > yesterday_price:
             buy_trigger = True
@@ -177,17 +175,14 @@ def execute_trade_logic(symbol, tree):
             buy_trigger = True
             
     else:
-        # If the stock is the original price or between it and $300 above
         buy_trigger = True
 
-    # 3. Action Execution
     if buy_trigger:
         print("Decision: BUY condition met.")
         execute_market_order(symbol, qty=2, side_type=OrderSide.BUY)
     elif sell_trigger:
         print("Decision: SELL ALL condition met.")
         try:
-            # Check if we own any shares to close out
             position = trading_client.get_open_position(symbol)
             qty_to_sell = int(position.qty)
             if qty_to_sell > 0:
@@ -203,7 +198,6 @@ def execute_trade_logic(symbol, tree):
 def run_bot():
     print(f"Bot session initialized at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    # Gather metrics
     original_price = get_ipo_price(SYMBOL)
     yesterday_price = get_yesterday_close(SYMBOL)
     current_price = get_live_price(SYMBOL)
@@ -212,17 +206,14 @@ def run_bot():
         print("Error: Missing critical price streams. Terminating runner.")
         return
 
-    # Build and populate the required Binary Search Tree structure
     price_tree = StockPriceTree()
     price_tree.insert("original", original_price)
     price_tree.insert("yesterday", yesterday_price)
     price_tree.insert("current", current_price)
     
-    # Run strategy
     execute_trade_logic(SYMBOL, price_tree)
 
 if __name__ == "__main__":
     SYMBOL = "AAPL"
     run_bot()
-    
 # pip install command:  C:/Users/S1855921/AppData/Local/Python/pythoncore-3.14-64/python.exe -m pip install alpaca-trade-api
