@@ -6,7 +6,7 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest, GetOrdersRequest
 from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
 from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest, StockLatestBarRequest
+from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest, StockLatestBarRequest, StockSnapshotRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.common.enums import Sort
 from dotenv import load_dotenv
@@ -67,22 +67,19 @@ class StockPriceTree:
 # --- Data Fetching Functions ---
 def get_ipo_price(symbol):
     try:
-        # Ask Alpaca for the most recently completed daily bar
-        request_params = StockLatestBarRequest(
-            symbol_or_symbols=symbol, 
-            feed='iex'
-        )
-        latest_bar = data_client.get_stock_latest_bar(request_params)
+        # Request a complete market snapshot for the symbol
+        request_params = StockSnapshotRequest(symbol_or_symbols=symbol, feed='iex')
+        snapshot = data_client.get_stock_snapshot(request_params)
         
-        if symbol in latest_bar:
-            # This returns Friday's opening price as your baseline anchor
-            return latest_bar[symbol].open
+        if symbol in snapshot and snapshot[symbol].daily_bar:
+            # Use Friday's daily opening price as your baseline anchor!
+            return snapshot[symbol].daily_bar.open
         else:
-            print(f"Could not find a baseline bar for {symbol}")
+            print(f"Could not find daily bar snapshot for {symbol}")
             return None
             
     except Exception as e:
-        print(f"Error fetching baseline price for {symbol}: {e}")
+        print(f"Error fetching snapshot for {symbol}: {e}")
         return None
 
 def get_yesterday_close(symbol):
