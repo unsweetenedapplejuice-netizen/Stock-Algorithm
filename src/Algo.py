@@ -66,47 +66,31 @@ class StockPriceTree:
 
 # --- Data Fetching Functions ---
 def get_ipo_price(symbol):
-    # FIX: Free tier requires data requests to end at least 15 minutes in the past
-    safe_end_time = datetime.now() - timedelta(minutes=20)
-    
-    # --- STRATEGY 1: Try looking back to 1970 ---
     try:
+        # Step 1: Look back exactly 4 years from today
+        four_years_ago = datetime.now() - timedelta(days=4*365)
+        # Enforce the mandatory 15-minute delay for free tier accounts
+        safe_end_time = datetime.now() - timedelta(minutes=20)
+        
         request_params = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=TimeFrame.Day,
-            start=datetime(1970, 1, 1),
-            end=safe_end_time,              # FIX: Enforce 15+ minute delay rule
-            limit=1,                        # Revert safely to 1 bar
+            start=four_years_ago,
+            end=safe_end_time,
+            limit=1,                # Grab just the oldest single bar in this window
             feed='iex'
         )
         bars = data_client.get_stock_bars(request_params)
         
         if symbol in bars and len(bars[symbol]) > 0:
             return bars[symbol][0].open
-    except Exception:
-        pass 
-        
-    # --- STRATEGY 2: Fallback to a 3-year window for legacy stocks ---
-    print(f"Deep history missing for {symbol}. Attempting 3-year fallback baseline...")
-    try:
-        three_years_ago = datetime.now() - timedelta(days=3*365)
-        request_params = StockBarsRequest(
-            symbol_or_symbols=symbol,
-            timeframe=TimeFrame.Day,
-            start=three_years_ago,
-            end=safe_end_time,              # FIX: Enforce 15+ minute delay rule
-            limit=1, 
-            feed='iex'
-        )
-        bars = data_client.get_stock_bars(request_params)
-        
-        if symbol in bars and len(bars[symbol]) > 0:
-            return bars[symbol][0].open
+        else:
+            print(f"No historical data available for {symbol} in the 4-year window.")
+            return None
             
     except Exception as e:
-        print(f"All baseline fetch attempts failed for {symbol}: {e}")
-        
-    return None
+        print(f"Could not fetch baseline price for {symbol}: {e}")
+        return None
 
 def get_yesterday_close(symbol):
     try:
