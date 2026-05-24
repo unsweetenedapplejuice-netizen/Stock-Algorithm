@@ -66,12 +66,15 @@ class StockPriceTree:
 
 # --- Data Fetching Functions ---
 def get_ipo_price(symbol):
-    # --- STRATEGY 1: Try looking back to 1970 (Works for most of your watchlist) ---
+    now = datetime.now()
+    
+    # --- STRATEGY 1: Try looking back to 1970 ---
     try:
         request_params = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=TimeFrame.Day,
             start=datetime(1970, 1, 1),
+            end=now,     # FIX: Explicitly search all the way to now
             limit=1, 
             feed='iex'
         )
@@ -80,16 +83,17 @@ def get_ipo_price(symbol):
         if symbol in bars and len(bars[symbol]) > 0:
             return bars[symbol][0].open
     except Exception:
-        pass # If an API error happens, just move to Strategy 2
+        pass 
         
-    # --- STRATEGY 2: Fallback to a 3-year window (For legacy stocks like Ford) ---
+    # --- STRATEGY 2: Fallback to a 3-year window ---
     print(f"Deep history missing for {symbol}. Attempting 3-year fallback baseline...")
     try:
-        three_years_ago = datetime.now() - timedelta(days=3*365)
+        three_years_ago = now - timedelta(days=3*365)
         request_params = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=TimeFrame.Day,
             start=three_years_ago,
+            end=now,  # FIX: Explicitly search all the way to now
             limit=1, 
             feed='iex'
         )
