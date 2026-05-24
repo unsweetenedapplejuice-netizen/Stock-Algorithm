@@ -65,48 +65,36 @@ class StockPriceTree:
 
 
 # --- Data Fetching Functions ---
-def get_ipo_price(symbol):
+def get_stock_baselines(symbol):
+    """Fetches all three required prices for the BST in a single, weekend-proof call."""
     try:
-        # Request a complete market snapshot for the symbol
         request_params = StockSnapshotRequest(symbol_or_symbols=symbol, feed='iex')
         snapshot = data_client.get_stock_snapshot(request_params)
         
-        if symbol in snapshot and snapshot[symbol].daily_bar:
-            # Use Friday's daily opening price as your baseline anchor!
-            return snapshot[symbol].daily_bar.open
-        else:
-            print(f"Could not find daily bar snapshot for {symbol}")
-            return None
+        if symbol in snapshot and snapshot[symbol]:
+            snap = snapshot[symbol]
+            
+            # 1. Live Price (Uses last known ask price)
+            current_price = snap.latest_quote.ask_price if snap.latest_quote else None
+            
+            # 2. Yesterday Close (Uses Friday's closing price)
+            yesterday_price = snap.daily_bar.close if snap.daily_bar else None
+            
+            # 3. Original Anchor (Uses Friday's opening price as a stable baseline)
+            original_price = snap.daily_bar.open if snap.daily_bar else None
+            
+            # If IEX is missing the daily bar details for Ford, use the quote as a fallback
+            if not original_price and current_price:
+                original_price = current_price
+            if not yesterday_price and current_price:
+                yesterday_price = current_price
+
+            return original_price, yesterday_price, current_price
             
     except Exception as e:
-        print(f"Error fetching snapshot for {symbol}: {e}")
-        return None
-
-def get_yesterday_close(symbol):
-    try:
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=5) 
-        request_params = StockBarsRequest(
-            symbol_or_symbols=symbol,
-            timeframe=TimeFrame.Day,
-            start=start_date,
-            end=end_date,
-            feed='iex'
-        )
-        bars = data_client.get_stock_bars(request_params)
-        return bars[symbol][-1].close
-    except Exception as e:
-        print(f"Error fetching yesterday's closing price for {symbol}: {e}")
-        return None
-
-def get_live_price(symbol):
-    try:
-        request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol, feed='iex')
-        quote = data_client.get_stock_latest_quote(request_params)
-        return quote[symbol].ask_price
-    except Exception as e:
-        print(f"Error fetching live price for {symbol}: {e}")
-        return None
+        print(f"Error fetching snapshot baseline for {symbol}: {e}")
+        
+    return None, None, None
 
 def get_daily_transaction_count():
     try:
@@ -215,9 +203,9 @@ def run_bot(watchlist):
     # Step 1: Gather and isolate data structures into the dictionary
     for symbol in watchlist:
         print(f"Fetching market baselines for {symbol}...")
-        original_price = get_ipo_price(symbol)
-        yesterday_price = get_yesterday_close(symbol)
-        current_price = get_live_price(symbol)
+        
+        # Call the new unified snapshot function
+        original_price, yesterday_price, current_price = get_stock_baselines(symbol)
         
         if not all([original_price, yesterday_price, current_price]):
             print(f"Skipping {symbol} due to missing data streams.")
@@ -229,7 +217,6 @@ def run_bot(watchlist):
         price_tree.insert("yesterday", yesterday_price)
         price_tree.insert("current", current_price)
         
-        # Save tree into our dictionary registry
         portfolio_registry[symbol] = price_tree
 
     # --- MARKET OPEN GUARD ---
