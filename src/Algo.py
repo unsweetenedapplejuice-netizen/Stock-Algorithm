@@ -8,7 +8,7 @@ from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
 from alpaca.data.timeframe import TimeFrame
-from alpaca.data.enums import Sort
+from alpaca.common.enums import Sort
 from dotenv import load_dotenv
 
 load_dotenv()
