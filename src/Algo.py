@@ -66,27 +66,42 @@ class StockPriceTree:
 
 # --- Data Fetching Functions ---
 def get_ipo_price(symbol):
+    # --- STRATEGY 1: Try looking back to 1970 (Works for most of your watchlist) ---
     try:
         request_params = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=TimeFrame.Day,
             start=datetime(1970, 1, 1),
             limit=1, 
-            feed='iex',
-            sort=Sort.ASC # <-- Tell Alpaca to sort from oldest to newest
+            feed='iex'
         )
         bars = data_client.get_stock_bars(request_params)
         
-        # Check if we actually got data back for this symbol
         if symbol in bars and len(bars[symbol]) > 0:
             return bars[symbol][0].open
-        else:
-            print(f"No historical data available at all for {symbol}")
-            return None
+    except Exception:
+        pass # If an API error happens, just move to Strategy 2
         
+    # --- STRATEGY 2: Fallback to a 3-year window (For legacy stocks like Ford) ---
+    print(f"Deep history missing for {symbol}. Attempting 3-year fallback baseline...")
+    try:
+        three_years_ago = datetime.now() - timedelta(days=3*365)
+        request_params = StockBarsRequest(
+            symbol_or_symbols=symbol,
+            timeframe=TimeFrame.Day,
+            start=three_years_ago,
+            limit=1, 
+            feed='iex'
+        )
+        bars = data_client.get_stock_bars(request_params)
+        
+        if symbol in bars and len(bars[symbol]) > 0:
+            return bars[symbol][0].open
+            
     except Exception as e:
-        print(f"Could not fetch IPO price for {symbol}: {e}")
-        return None
+        print(f"All baseline fetch attempts failed for {symbol}: {e}")
+        
+    return None
 
 def get_yesterday_close(symbol):
     try:
