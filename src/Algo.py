@@ -245,7 +245,7 @@ def run_bot(watchlist):
 
 if __name__ == "__main__":
     # Your brand new, multi-asset automated portfolio selection list!
-    MY_WATCHLIST = ["AAPL", "NVDA", "MSFT", "GOOGL", "AMZN"]
+    MY_WATCHLIST = ["AAPL", "NVDA", "MSFT", "GOOGL", "AMZN", "TSLA", "NFLX", "F", "META"]
     run_bot(MY_WATCHLIST)
 
 
