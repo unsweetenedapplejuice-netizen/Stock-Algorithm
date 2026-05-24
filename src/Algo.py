@@ -22,6 +22,7 @@ except ValueError as e:
     print(f"Authentication Error: {e}")
     exit()
 
+
 # --- Binary Tree Requirement ---
 class PriceNode:
     def __init__(self, label, price):
@@ -52,27 +53,6 @@ class StockPriceTree:
             else:
                 self._insert_recursive(current_node.right, label, price)
 
-    # FIXED: Proper BST Search utilizing price comparison
-    def search_by_price(self, node, target_price):
-        """
-        Standard BST Search: O(log n) efficiency.
-        Compares prices to eliminate half the tree at each step.
-        """
-        if node is None:
-            return None
-            
-        # If we find the exact price match, return the node's details
-        if node.price == target_price:
-            return node
-            
-        # If target is smaller, search the left subtree
-        if target_price < node.price:
-            return self.search_by_price(node.left, target_price)
-            
-        # If target is larger, search the right subtree
-        return self.search_by_price(node.right, target_price)
-
-    # Auxiliary Helper to grab all nodes in order (useful for strategy arrays)
     def inorder_traversal(self, node, result_list=None):
         if result_list is None:
             result_list = []
@@ -81,6 +61,7 @@ class StockPriceTree:
             result_list.append((node.label, node.price))
             self.inorder_traversal(node.right, result_list)
         return result_list
+
 
 # --- Data Fetching Functions ---
 def get_ipo_price(symbol):
@@ -95,7 +76,7 @@ def get_ipo_price(symbol):
         bars = data_client.get_stock_bars(request_params)
         return bars[symbol][0].open
     except Exception as e:
-        print(f"Could not fetch IPO price: {e}")
+        print(f"Could not fetch IPO price for {symbol}: {e}")
         return None
 
 def get_yesterday_close(symbol):
@@ -112,7 +93,7 @@ def get_yesterday_close(symbol):
         bars = data_client.get_stock_bars(request_params)
         return bars[symbol][-1].close
     except Exception as e:
-        print(f"Error fetching yesterday's closing price: {e}")
+        print(f"Error fetching yesterday's closing price for {symbol}: {e}")
         return None
 
 def get_live_price(symbol):
@@ -121,7 +102,7 @@ def get_live_price(symbol):
         quote = data_client.get_stock_latest_quote(request_params)
         return quote[symbol].ask_price
     except Exception as e:
-        print(f"Error fetching live price: {e}")
+        print(f"Error fetching live price for {symbol}: {e}")
         return None
 
 def get_daily_transaction_count():
@@ -147,46 +128,34 @@ def execute_market_order(symbol, qty, side_type):
         trading_client.submit_order(order_data=order_data)
         print(f"SUCCESS: Market {side_type.value.upper()} order placed for {qty} shares of {symbol}.")
     except Exception as e:
-        print(f"Failed to execute trade order: {e}")
+        print(f"Failed to execute trade order for {symbol}: {e}")
 
 
 # --- Core Logic Pipeline ---
-def execute_trade_logic(symbol, price_tree):
-    # Fulfill the BST traversal requirement to extract the structured data
-    ordered_prices = price_tree.inorder_traversal(price_tree.root)
+def execute_trade_logic(symbol, price_tree, global_trade_count):
+    print(f"\n--- Strategy Analysis via BST for {symbol} ---")
     
-    # Create a quick local map from our tree nodes for our if/else triggers
+    # Check global limits before running the calculations
+    if global_trade_count >= 30:
+        print(f"Daily transaction limit (30) reached. Skipping strategy for {symbol}.")
+        return global_trade_count
+
+    # Flatten the specific stock's tree into ordered tracking data
+    ordered_prices = price_tree.inorder_traversal(price_tree.root)
     prices = {label: price for label, price in ordered_prices}
     
     current_price = prices["current"]
     original_price = prices["original"]
     yesterday_price = prices["yesterday"]
 
-    print(f"\n--- Strategy Analysis via BST for {symbol} ---")
     print(f"Current Price:   ${current_price:.2f}")
     print(f"Original Price:  ${original_price:.2f} (Target High: ${original_price + 300:.2f})")
     print(f"Yesterday Close: ${yesterday_price:.2f}")
 
-    # Check daily limit threshold
-    trades_today = get_daily_transaction_count()
-    print(f"Daily Transactions: {trades_today}/30")
-    if trades_today >= 30:
-        print("Daily transaction limit reached or exceeded. Skipping trade execution.")
-        return
-
-    # --- Market Open/Closed Guard ---
-    try:
-        clock = trading_client.get_clock()
-        if not clock.is_open:
-            print(f"MARKET CLOSED: Analysis complete, but no orders placed. Next open: {clock.next_open}")
-            return
-    except Exception as e:
-        print(f"Warning: Could not check market clock via API ({e}). Proceeding anyway...")
-
     buy_trigger = False
     sell_trigger = False
 
-    # Your core algorithmic logic remains exactly intact
+    # Main logic execution
     if current_price >= (original_price + 300):
         if current_price > yesterday_price:
             buy_trigger = True
@@ -202,9 +171,11 @@ def execute_trade_logic(symbol, price_tree):
     else:
         buy_trigger = True
 
+    # Execution blocks (Updates trade counter if action is taken)
     if buy_trigger:
         print("Decision: BUY condition met.")
         execute_market_order(symbol, qty=2, side_type=OrderSide.BUY)
+        global_trade_count += 1
     elif sell_trigger:
         print("Decision: SELL ALL condition met.")
         try:
@@ -212,34 +183,70 @@ def execute_trade_logic(symbol, price_tree):
             qty_to_sell = int(position.qty)
             if qty_to_sell > 0:
                 execute_market_order(symbol, qty=qty_to_sell, side_type=OrderSide.SELL)
+                global_trade_count += 1
             else:
                 print("Sell signal triggered, but current paper position size is 0.")
         except Exception:
-            print("No open positions found to liquidate for this asset.")
+            print(f"No open positions found to liquidate for {symbol}.")
     else:
         print("Decision: HOLD (No strategic criteria triggered).")
+        
+    return global_trade_count
 
 
-def run_bot():
+def run_bot(watchlist):
     print(f"Bot session initialized at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    original_price = get_ipo_price(SYMBOL)
-    yesterday_price = get_yesterday_close(SYMBOL)
-    current_price = get_live_price(SYMBOL)
+    # Check how many orders have already happened today via API
+    total_trades_today = get_daily_transaction_count()
+    print(f"Initial Account Trade Count for Today: {total_trades_today}/30")
     
-    if not all([original_price, yesterday_price, current_price]):
-        print("Error: Missing critical price streams. Terminating runner.")
+    if total_trades_today >= 30:
+        print("Daily account limit already maximized. Exiting runner script.")
         return
 
-    # Correctly feeding the data properties sequentially into the BST
-    price_tree = StockPriceTree()
-    price_tree.insert("original", original_price)
-    price_tree.insert("yesterday", yesterday_price)
-    price_tree.insert("current", current_price)
-    
-    execute_trade_logic(SYMBOL, price_tree)
+    # --- DICTIONARY IMPLEMENTATION ---
+    # Key: Ticker String | Value: Custom StockPriceTree Instance
+    portfolio_registry = {}
+
+    # Step 1: Gather and isolate data structures into the dictionary
+    for symbol in watchlist:
+        print(f"Fetching market baselines for {symbol}...")
+        original_price = get_ipo_price(symbol)
+        yesterday_price = get_yesterday_close(symbol)
+        current_price = get_live_price(symbol)
+        
+        if not all([original_price, yesterday_price, current_price]):
+            print(f"Skipping {symbol} due to missing data streams.")
+            continue
+
+        # Build this asset's isolated tree structure
+        price_tree = StockPriceTree()
+        price_tree.insert("original", original_price)
+        price_tree.insert("yesterday", yesterday_price)
+        price_tree.insert("current", current_price)
+        
+        # Save tree into our dictionary registry
+        portfolio_registry[symbol] = price_tree
+
+    # --- MARKET OPEN GUARD ---
+    try:
+        clock = trading_client.get_clock()
+        if not clock.is_open:
+            print(f"\nMARKET CLOSED. Analysis complete for {list(portfolio_registry.keys())}. No orders sent. Next open: {clock.next_open}")
+            return
+    except Exception as e:
+        print(f"Warning: Clock API offline ({e}). Proceeding...")
+
+    # Step 2: Loop through the dictionary values to run calculations
+    for symbol, tree in portfolio_registry.items():
+        total_trades_today = execute_trade_logic(symbol, tree, total_trades_today)
+
 
 if __name__ == "__main__":
-    SYMBOL = "AAPL"
-    run_bot()
+    # Your brand new, multi-asset automated portfolio selection list!
+    MY_WATCHLIST = ["AAPL", "NVDA", "MSFT", "GOOGL", "AMZN"]
+    run_bot(MY_WATCHLIST)
+
+
 # pip install command:  C:/Users/S1855921/AppData/Local/Python/pythoncore-3.14-64/python.exe -m pip install alpaca-trade-api
