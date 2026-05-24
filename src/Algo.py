@@ -8,6 +8,7 @@ from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
 from alpaca.data.timeframe import TimeFrame
+from alpaca.data.enums import Sort
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -71,10 +72,18 @@ def get_ipo_price(symbol):
             timeframe=TimeFrame.Day,
             start=datetime(1970, 1, 1),
             limit=1, 
-            feed='iex'
+            feed='iex',
+            sort=Sort.ASC # <-- Tell Alpaca to sort from oldest to newest
         )
         bars = data_client.get_stock_bars(request_params)
-        return bars[symbol][0].open
+        
+        # Check if we actually got data back for this symbol
+        if symbol in bars and len(bars[symbol]) > 0:
+            return bars[symbol][0].open
+        else:
+            print(f"No historical data available at all for {symbol}")
+            return None
+        
     except Exception as e:
         print(f"Could not fetch IPO price for {symbol}: {e}")
         return None
@@ -113,7 +122,7 @@ def get_daily_transaction_count():
         return len(orders)
     except Exception as e:
         print(f"Error checking daily transaction count: {e}")
-        return 999  
+        return 999
 
 
 # --- Order Execution ---
