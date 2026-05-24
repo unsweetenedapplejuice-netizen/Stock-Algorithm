@@ -68,19 +68,20 @@ class StockPriceTree:
 def get_ipo_price(symbol):
     now = datetime.now()
     
-    # --- STRATEGY 1: Try looking back to 1970 ---
+    # --- STRATEGY 1: Try looking back to 1970 (Grab the oldest 100 bars) ---
     try:
         request_params = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=TimeFrame.Day,
             start=datetime(1970, 1, 1),
-            end=now,     # FIX: Explicitly search all the way to now
-            limit=1, 
+            end=now,
+            limit=100,    # FIX: Ask for a small block, not just 1
             feed='iex'
         )
         bars = data_client.get_stock_bars(request_params)
         
         if symbol in bars and len(bars[symbol]) > 0:
+            # Index 0 is the oldest available bar returned in this chronological range
             return bars[symbol][0].open
     except Exception:
         pass 
@@ -93,8 +94,8 @@ def get_ipo_price(symbol):
             symbol_or_symbols=symbol,
             timeframe=TimeFrame.Day,
             start=three_years_ago,
-            end=now,  # FIX: Explicitly search all the way to now
-            limit=1, 
+            end=now,
+            limit=100,   # FIX: Ask for a small block, not just 1
             feed='iex'
         )
         bars = data_client.get_stock_bars(request_params)
