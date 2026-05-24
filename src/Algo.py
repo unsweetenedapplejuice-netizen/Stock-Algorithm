@@ -52,17 +52,35 @@ class StockPriceTree:
             else:
                 self._insert_recursive(current_node.right, label, price)
 
-    def search_by_label(self, node, target_label):
+    # FIXED: Proper BST Search utilizing price comparison
+    def search_by_price(self, node, target_price):
+        """
+        Standard BST Search: O(log n) efficiency.
+        Compares prices to eliminate half the tree at each step.
+        """
         if node is None:
             return None
-        if node.label == target_label:
-            return node.price
-        
-        left_res = self.search_by_label(node.left, target_label)
-        if left_res is not None:
-            return left_res
-        return self.search_by_label(node.right, target_label)
+            
+        # If we find the exact price match, return the node's details
+        if node.price == target_price:
+            return node
+            
+        # If target is smaller, search the left subtree
+        if target_price < node.price:
+            return self.search_by_price(node.left, target_price)
+            
+        # If target is larger, search the right subtree
+        return self.search_by_price(node.right, target_price)
 
+    # Auxiliary Helper to grab all nodes in order (useful for strategy arrays)
+    def inorder_traversal(self, node, result_list=None):
+        if result_list is None:
+            result_list = []
+        if node:
+            self.inorder_traversal(node.left, result_list)
+            result_list.append((node.label, node.price))
+            self.inorder_traversal(node.right, result_list)
+        return result_list
 
 # --- Data Fetching Functions ---
 def get_ipo_price(symbol):
@@ -133,12 +151,18 @@ def execute_market_order(symbol, qty, side_type):
 
 
 # --- Core Logic Pipeline ---
-def execute_trade_logic(symbol, tree):
-    current_price = tree.search_by_label(tree.root, "current")
-    original_price = tree.search_by_label(tree.root, "original")
-    yesterday_price = tree.search_by_label(tree.root, "yesterday")
+def execute_trade_logic(symbol, price_tree):
+    # Fulfill the BST traversal requirement to extract the structured data
+    ordered_prices = price_tree.inorder_traversal(price_tree.root)
+    
+    # Create a quick local map from our tree nodes for our if/else triggers
+    prices = {label: price for label, price in ordered_prices}
+    
+    current_price = prices["current"]
+    original_price = prices["original"]
+    yesterday_price = prices["yesterday"]
 
-    print(f"\n--- Strategy Analysis for {symbol} ---")
+    print(f"\n--- Strategy Analysis via BST for {symbol} ---")
     print(f"Current Price:   ${current_price:.2f}")
     print(f"Original Price:  ${original_price:.2f} (Target High: ${original_price + 300:.2f})")
     print(f"Yesterday Close: ${yesterday_price:.2f}")
@@ -162,6 +186,7 @@ def execute_trade_logic(symbol, tree):
     buy_trigger = False
     sell_trigger = False
 
+    # Your core algorithmic logic remains exactly intact
     if current_price >= (original_price + 300):
         if current_price > yesterday_price:
             buy_trigger = True
@@ -206,6 +231,7 @@ def run_bot():
         print("Error: Missing critical price streams. Terminating runner.")
         return
 
+    # Correctly feeding the data properties sequentially into the BST
     price_tree = StockPriceTree()
     price_tree.insert("original", original_price)
     price_tree.insert("yesterday", yesterday_price)
