@@ -6,7 +6,7 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest, GetOrdersRequest
 from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
 from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
+from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest, StockLatestBarRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.common.enums import Sort
 from dotenv import load_dotenv
@@ -67,29 +67,22 @@ class StockPriceTree:
 # --- Data Fetching Functions ---
 def get_ipo_price(symbol):
     try:
-        # Step 1: Look back exactly 4 years from today
-        four_years_ago = datetime.now() - timedelta(days=4*365)
-        # Enforce the mandatory 15-minute delay for free tier accounts
-        safe_end_time = datetime.now() - timedelta(minutes=20)
-        
-        request_params = StockBarsRequest(
-            symbol_or_symbols=symbol,
-            timeframe=TimeFrame.Day,
-            start=four_years_ago,
-            end=safe_end_time,
-            limit=1,                # Grab just the oldest single bar in this window
+        # Ask Alpaca for the most recently completed daily bar
+        request_params = StockLatestBarRequest(
+            symbol_or_symbols=symbol, 
             feed='iex'
         )
-        bars = data_client.get_stock_bars(request_params)
+        latest_bar = data_client.get_stock_latest_bar(request_params)
         
-        if symbol in bars and len(bars[symbol]) > 0:
-            return bars[symbol][0].open
+        if symbol in latest_bar:
+            # This returns Friday's opening price as your baseline anchor
+            return latest_bar[symbol].open
         else:
-            print(f"No historical data available for {symbol} in the 4-year window.")
+            print(f"Could not find a baseline bar for {symbol}")
             return None
             
     except Exception as e:
-        print(f"Could not fetch baseline price for {symbol}: {e}")
+        print(f"Error fetching baseline price for {symbol}: {e}")
         return None
 
 def get_yesterday_close(symbol):
