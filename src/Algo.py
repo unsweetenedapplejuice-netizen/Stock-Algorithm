@@ -109,7 +109,7 @@ def get_daily_transaction_count():
     try:
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         params = GetOrdersRequest(status=QueryOrderStatus.ALL, after=today_start)
-        orders = trading_client.get_orders(filter_params=params)
+        orders = trading_client.get_orders(filter=params)
         return len(orders)
     except Exception as e:
         print(f"Error checking daily transaction count: {e}")
