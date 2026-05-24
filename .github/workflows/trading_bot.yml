@@ -1,11 +1,17 @@
 name: Run Stock Trading Bot
 
 on:
+  schedule:
+    # Trigger automatically at 12:20 PM Chicago Time (central), Monday through Friday
+    - cron: '20 12 * * 1-5'
+      timezone: 'America/Chicago'
+  
   workflow_dispatch: # This lets you click "Run" manually on GitHub for testing
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # Guardrail to prevent hanging runs from eating minutes
 
     steps:
     - name: Checkout Repository Code
@@ -23,7 +29,7 @@ jobs:
 
     - name: Run Trading Script
       env:
-        # These map your GitHub Secrets to the exact names Algo.py expects
+        # Maps your GitHub Secrets to the exact names your script pulls from os.getenv()
         ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
         ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
       run: |
