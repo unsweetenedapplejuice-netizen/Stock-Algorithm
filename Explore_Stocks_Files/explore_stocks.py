@@ -55,7 +55,7 @@ def main():
             SELECT DISTINCT symbol
             FROM bars_5m
             ORDER BY symbol
-            LIMIT 100
+            
         """)
 
         # 2. How much historical data does each stock have?
