@@ -1,0 +1,266 @@
+#"""Train one linear regression model per stock and optionally submit paper orders.
+#
+#The models predict the expected close-price change over six five-minute bars.
+#Run without --execute to print decisions only. Paper mode is always enforced.
+#"""
+#
+#import argparse
+#import os
+#import sqlite3
+#import sys
+#from pathlib import Path
+#
+#import pandas as pd
+#from dotenv import load_dotenv
+#
+#
+#DB_PATH = Path(__file__).resolve().parents[1] / "Stock_Linear_Regression_Database.db"
+#FEATURES = ["close", "recent_return", "price_range", "volume"]
+#HORIZON_BARS = 6
+#MIN_ROWS = 100
+#
+#
+#def load_training_data():
+#    if not DB_PATH.is_file():
+#        raise FileNotFoundError(f"Database not found: {DB_PATH}")
+#
+#    with sqlite3.connect(DB_PATH) as connection:
+#        frame = pd.read_sql_query(
+#            """
+#            SELECT symbol, ts_utc, open, high, low, close, volume
+#            FROM stock_bars
+#            ORDER BY symbol, ts_utc
+#            """,
+#            connection,
+#        )
+#
+#    if frame.empty:
+#        raise RuntimeError("stock_bars contains no rows")
+#
+#    frame["ts_utc"] = pd.to_datetime(frame["ts_utc"], utc=True, errors="coerce")
+#    frame = frame.dropna(subset=["ts_utc", "close", "high", "low", "volume"])
+#    frame["recent_return"] = frame.groupby("symbol", sort=False)["close"].pct_change(3)
+#    frame["price_range"] = frame["high"] - frame["low"]
+#    frame["future_close"] = frame.groupby("symbol", sort=False)["close"].shift(-HORIZON_BARS)
+#    frame["target_change"] = frame["future_close"] - frame["close"]
+#    frame = frame.dropna(subset=FEATURES + ["target_change"])
+#    return frame
+#
+#
+#def get_credentials():
+#    load_dotenv()
+#    key = os.getenv("ALPACA_API_KEY") or os.getenv("APCA_API_KEY_ID")
+#    secret = os.getenv("ALPACA_SECRET_KEY") or os.getenv("APCA_API_SECRET_KEY")
+#    if not key or not secret:
+#        raise RuntimeError(
+#            "Set ALPACA_API_KEY and ALPACA_SECRET_KEY environment variables "
+#            "or APCA_API_KEY_ID and APCA_API_SECRET_KEY."
+#        )
+#    return key, secret
+#
+#
+#def train_models(frame):
+#    try:
+#        from sklearn.linear_model import LinearRegression
+#    except ImportError as exc:
+#        raise SystemExit("Missing dependency: install scikit-learn") from exc
+#
+#    symbols = sorted(frame["symbol"].dropna().unique())
+#    models = {}
+#
+#    for symbol in symbols:
+#        rows = frame.loc[frame["symbol"] == symbol].sort_values("ts_utc")
+#        if len(rows) < MIN_ROWS:
+#            print(f"{symbol}: skipped (only {len(rows)} usable rows; need {MIN_ROWS})")
+#            continue
+#
+#        model = LinearRegression()
+#        model.fit(rows[FEATURES], rows["target_change"])
+#        models[symbol] = model
+#        terms = " + ".join(
+#            f"{coefficient:.8f} * {name}"
+#            for name, coefficient in zip(FEATURES, model.coef_)
+#        )
+#        print(f"{symbol}: target_change = {model.intercept_:+.8f} + {terms}")
+#
+#    if not models:
+#        raise RuntimeError("No symbol has enough usable training rows")
+#    return models
+#
+#
+#def latest_feature_rows(data_client, symbols):
+#    try:
+#        from alpaca.data.requests import StockBarsRequest
+#        from alpaca.data.timeframe import TimeFrame
+#    except ImportError as exc:
+#        raise SystemExit("alpaca-py is not installed") from exc
+#
+#    from datetime import datetime, timedelta, timezone
+#
+#    request = StockBarsRequest(
+#        symbol_or_symbols=symbols,
+#        timeframe=TimeFrame.Minute,
+#        start=datetime.now(timezone.utc) - timedelta(days=3),
+#        limit=20,
+#        feed="iex",
+#    )
+#    bars = data_client.get_stock_bars(request)
+#    return bars.data
+#
+#
+#def make_live_features(symbol, symbol_bars):
+#    if len(symbol_bars) < 4:
+#        return None
+#
+#    rows = sorted(symbol_bars, key=lambda bar: bar.timestamp)
+#    frame = pd.DataFrame(
+#        {
+#            "close": [float(bar.close) for bar in rows],
+#            "high": [float(bar.high) for bar in rows],
+#            "low": [float(bar.low) for bar in rows],
+#            "volume": [float(bar.volume) for bar in rows],
+#        }
+#    )
+#    frame["recent_return"] = frame["close"].pct_change(3)
+#    frame["price_range"] = frame["high"] - frame["low"]
+#    last = frame.iloc[-1]
+#    if last[FEATURES].isna().any():
+#        return None
+#    return pd.DataFrame([last[FEATURES].to_dict()], columns=FEATURES)
+#
+#
+#def text_value(value):
+#    return value.value if hasattr(value, "value") else str(value)
+#
+#
+#def submit_paper_decisions(trading_client, decisions, buying_power_fraction=0.25):
+#    from alpaca.trading.enums import OrderSide, TimeInForce
+#    from alpaca.trading.requests import MarketOrderRequest
+#
+#    account = trading_client.get_account()
+#    buying_power = float(account.buying_power)
+#    positions = {
+#        position.symbol: position
+#        for position in trading_client.get_all_positions()
+#    }
+#
+#    for symbol, decision in decisions.items():
+#        prediction = decision["prediction"]
+#        live_price = decision["live_price"]
+#        if prediction is None:
+#            continue
+#
+#        position = positions.get(symbol)
+#        if prediction > decision["buy_threshold"]:
+#            if position is not None:
+#                print(f"{symbol}: predicted up; already holds {position.qty} shares")
+#                continue
+#            notional = buying_power * buying_power_fraction
+#            if notional < 1:
+#                print(f"{symbol}: insufficient buying power for a buy")
+#                continue
+#            request = MarketOrderRequest(
+#                symbol=symbol,
+#                notional=round(notional, 2),
+#                side=OrderSide.BUY,
+#                time_in_force=TimeInForce.DAY,
+#            )
+#            trading_client.submit_order(order_data=request)
+#            print(f"{symbol}: PAPER BUY submitted (notional=${notional:.2f})")
+#        elif prediction < decision["sell_threshold"] and position is not None:
+#            request = MarketOrderRequest(
+#                symbol=symbol,
+#                qty=position.qty,
+#                side=OrderSide.SELL,
+#                time_in_force=TimeInForce.DAY,
+#            )
+#            trading_client.submit_order(order_data=request)
+#            print(f"{symbol}: PAPER SELL submitted (qty={position.qty})")
+#        else:
+#            print(f"{symbol}: hold/no action")
+#
+#
+#def parse_args():
+#    parser = argparse.ArgumentParser()
+#    parser.add_argument(
+#        "--execute",
+#        action="store_true",
+#        help="Submit orders to your Alpaca PAPER account. Default: decisions only.",
+#    )
+#    parser.add_argument(
+#        "--buy-threshold",
+#        type=float,
+#        default=0.25,
+#        help="Minimum predicted 6-bar price increase required to buy.",
+#    )
+#    parser.add_argument(
+#        "--sell-threshold",
+#        type=float,
+#        default=-0.25,
+#        help="Maximum predicted 6-bar price change at which to sell.",
+#    )
+#    return parser.parse_args()
+#
+#
+#def main():
+#    args = parse_args()
+#    training = load_training_data()
+#    models = train_models(training)
+#    symbols = sorted(models)
+#    print(f"Trained stocks: {', '.join(symbols)}")
+#
+#    key, secret = get_credentials()
+#    try:
+#        from alpaca.data.historical import StockHistoricalDataClient
+#        from alpaca.trading.client import TradingClient
+#    except ImportError as exc:
+#        raise SystemExit("Missing dependency: run pip install -r requirements.txt") from exc
+#
+#    data_client = StockHistoricalDataClient(key, secret)
+#    trading_client = TradingClient(key, secret, paper=True)
+#    bars_by_symbol = latest_feature_rows(data_client, symbols)
+#    decisions = {}
+#
+#    clock = trading_client.get_clock()
+#    if not clock.is_open:
+#        print("Alpaca market is closed; no order will be submitted.")
+#
+#    for symbol in symbols:
+#        symbol_bars = bars_by_symbol.get(symbol, [])
+#        live_features = make_live_features(symbol, symbol_bars)
+#        if live_features is None:
+#            print(f"{symbol}: no complete live feature row")
+#            continue
+#
+#        prediction = float(models[symbol].predict(live_features)[0])
+#        live_price = float(live_features["close"].iloc[0])
+#        decisions[symbol] = {
+#            "prediction": prediction,
+#            "live_price": live_price,
+#            "buy_threshold": args.buy_threshold,
+#            "sell_threshold": args.sell_threshold,
+#        }
+#        print(
+#            f"{symbol}: live=${live_price:.2f}, "
+#            f"predicted 6-bar change=${prediction:+.4f}"
+#        )
+#
+#        if prediction > args.buy_threshold:
+#            print(f"{symbol}: BUY signal")
+#        elif prediction < args.sell_threshold:
+#            print(f"{symbol}: SELL signal")
+#        else:
+#            print(f"{symbol}: HOLD")
+#
+#    if args.execute:
+#        if not clock.is_open:
+#            print("Paper order submission skipped because the market is closed.")
+#        else:
+#            submit_paper_decisions(trading_client, decisions)
+#    else:
+#        print("Decision-only mode; pass --execute to submit PAPER orders.")
+#
+#
+#if __name__ == "__main__":
+#    main()
+#
